@@ -1,5 +1,6 @@
 # General python imports
 import matplotlib.pyplot as plt
+import numpy as np
 import time
 
 # Pyomo imports
@@ -18,6 +19,9 @@ from pyomo.environ import (Constraint,
 from idaes.core import FlowsheetBlock
 
 # Import additional functions
+import os, sys
+dirname = os.path.dirname(__file__)
+sys.path.append( os.path.abspath( os.path.dirname(__file__) ) )
 from process_lmp_signals import append_lmp_signal, append_raven_lmp_signal
 
 
@@ -38,8 +42,8 @@ def build_ne_flowsheet(m):
     m.fs.tank_holdup_previous = Var(within=NonNegativeReals,
                                     doc="Hold at the beginning of the period (kg)")
     #let's get rid of this and focus on the turbine
-    #m.fs.h2_to_pipeline = Var(within=NonNegativeReals,
-    #                          doc="Hydrogen flowrate to the pipeline (kg/hr)")
+    m.fs.h2_to_pipeline = Var(within=NonNegativeReals,
+                              doc="Hydrogen flowrate to the pipeline (kg/hr)")
     m.fs.h2_to_turbine = Var(within=NonNegativeReals,
                              doc="Hydrogen flowrate to the turbine (kg/hr)")
     m.fs.h2_turbine_power = Var(within=NonNegativeReals,
@@ -52,7 +56,7 @@ def build_ne_flowsheet(m):
     # Fix power production from NE plant to 1 GW
     # This way we can eliminate the NPP costs
     m.fs.np_power.fix(1000)
-   
+
 
     # Declare Constraints
     m.fs.np_power_balance = Constraint(
@@ -214,14 +218,14 @@ def app_costs_and_revenue(m, ps, scenario):
                 h2_sp * sum(weights_days[y][d] * blk.period[t, d, y].fs.h2_to_pipeline
                             for t in set_hours for d in set_days)
         )
-    
+
     #I don't think we will need this expression since TEAL does MACRS depreciation
     @m.Expression(set_years)
     def depreciation(blk, y):
         return (
                 blk.capex / plant_life
         )
-    
+
     #don;t need this expression because TEAl calculates this
     @m.Expression(set_years)
     def net_profit(blk, y):
@@ -329,8 +333,58 @@ if __name__ == '__main__':
     print("PEM Capacity            : ", mdl.pem_capacity.value, " MW")
     print("Tank Capacity           : ", mdl.tank_capacity.value, " kg")
     print("H2 Turbine Capacity     : ", mdl.h2_turbine_capacity.value, " MW")
-    print("Electricity Revenue       : ", mdl.scenarios[0].electricity_revenue[2021].expr())
-    print("H2 Credit Revenue       : ", mdl.scenarios[0].h2_credit[2021].expr())
+    print("Electricity Revenue       : $M ", mdl.scenarios[0].electricity_revenue[2021].expr() / 1e6)
+    print("H2 Credit Revenue       : $M ", mdl.scenarios[0].h2_credit[2021].expr() / 1e6)
 
     end = time.time()
     print(f"Time taken for the run: {end - start} s")
+
+
+    #===========
+    # Plots
+    #===========
+
+    hours = mdl.set_hours
+    days  = mdl.set_days
+    years = mdl.set_years
+    scenarios = mdl.set_scenarios
+
+    unpack = lambda name: {s: {y: np.array([getattr(mdl.scenarios[s].period[h, d, y].fs, name).value
+                                for h in hours
+                                    for d in days])
+                                         for y in years}
+                                             for s in scenarios}
+
+    extract_hours = lambda name, s, y, d: np.array([getattr(mdl, name)[s][y][d][h] for h in hours])
+
+    hours_p = np.array([h for h in hours])
+    days_p  = np.array([d for d in days])
+    years_p = np.array([y for y in years])
+
+    np_power = unpack("np_power")
+    np_to_grid = unpack("np_to_grid")
+    np_to_electrolyzer = unpack("np_to_electrolyzer")
+
+    h2_production = unpack("h2_production")
+    h2_to_turbine = unpack("h2_to_turbine")
+    h2_turbine_power = unpack("h2_turbine_power")
+
+    net_power = unpack("net_power")
+
+    LMP = np.array([extract_hours("LMP", 0, 2020, d) for d in days])
+
+    fig = plt.figure()
+
+    ax1 = fig.add_subplot(211)
+    ax1.plot(net_power[0][2020]  )
+    ax1.plot(LMP.flatten()  )
+    # ax1.plot(hours_p, np_to_grid[0][2020][1]  )
+    # ax1.plot(hours_p, np_to_electrolyzer[0][2020][1]  )
+
+    ax2 = fig.add_subplot(212)
+    ax2.plot(h2_production[0][2020]  )
+    ax2.plot(h2_to_turbine[0][2020]  )
+    ax2.plot(h2_turbine_power[0][2020]  )
+
+
+

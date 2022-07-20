@@ -3,6 +3,9 @@ import numpy as np
 from pyomo.environ import Param, RangeSet
 import json
 
+import os, sys
+dirname = os.path.dirname(__file__)
+sys.path.append( os.path.abspath( os.path.dirname(__file__) ) )
 
 def append_lmp_signal(m,
                       signal_source="ARPA_E",
@@ -34,7 +37,8 @@ def append_lmp_signal(m,
     #                   (t, d): lmp_data_full_year[d - 1, t - 1]
     #                   for t in m.set_hours for d in m.set_days})
 
-    with open('lmp_price_signal.json') as fp:
+    filepath = os.path.join( dirname, 'lmp_price_signal.json')
+    with open(filepath) as fp:
         full_lmp_data = json.load(fp)
 
     m.set_days = RangeSet(20)
@@ -57,7 +61,8 @@ def append_raven_lmp_signal(m, scenarios, years,
     if plant_life < len(years):
         raise Exception("Plant lifetime is lower than |set_years|!")
 
-    with open('lmp_price_signal.json') as fp:
+    filepath = os.path.join( dirname, 'lmp_price_signal.json')
+    with open(filepath) as fp:
         full_lmp_data = json.load(fp)
 
     # Append the set of hours, days, years, and scenarios
